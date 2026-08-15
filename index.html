@@ -145,7 +145,7 @@
 <body>
 
 <div class="container">
-    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v4.0</h1>
+    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v5.0</h1>
     
     <div class="form-group">
         <label for="apiKey">Gemini API Key:</label>
@@ -309,16 +309,26 @@ async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
 
     let prompt = `你是一個專業雙語字幕翻譯員。\n`;
-    prompt += `【最高優先度規則】\n`;
-    prompt += `1. 所有中文翻譯（zh）必須「完全使用香港繁體中文（Traditional Chinese, Hong Kong）」，用語與標點符號必須符合香港習慣。絕對禁止使用任何簡體字或大陸用語！\n`;
-    prompt += `2. 英文（en）翻譯必須自然流暢，適合影片字幕長度與口語表達。\n`;
-    prompt += `3. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n`;
-    prompt += `4. 再次強調：即使是最後一批字幕，中文也絕對不能混入任何簡體字！\n\n`;
+    prompt += `【香港廣東話口語文字規範】\n`;
+    prompt += `所有中文翻譯（zh）必須嚴格使用地道香港廣東話口語，並恪守以下字詞規範：\n`;
+    prompt += `- 必須使用「係」，絕對禁止使用「系」或「是」。\n`;
+    prompt += `- 必須使用「俾」，絕對禁止使用「畀」或「給」。\n`;
+    prompt += `- 必須使用「咗」（如：做咗、睇咗），絕對禁止使用「了」。\n`;
+    prompt += `- 必須使用「嗰」（如：嗰度、嗰個），絕對禁止使用「那」。\n`;
+    prompt += `- 必須使用「呢」（如：呢度、呢個），絕對禁止使用「這」。\n`;
+    prompt += `- 必須使用「冇」，絕對禁止使用「冇」的替代字或「沒有」。\n`;
+    prompt += `- 必須使用「唔」，絕對禁止使用「不」。\n`;
+    prompt += `- 必須使用「噉」（如：噉樣），絕對禁止使用「咁樣」或「這樣」。\n`;
+    prompt += `- 絕對禁止出現任何簡體字或大陸用語！\n\n`;
+    prompt += `【其他規則】\n`;
+    prompt += `1. 英文（en）翻譯必須自然流暢，適合影片字幕長度與口語表達。\n`;
+    prompt += `2. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n`;
+    prompt += `3. 即使是最後一批字幕，也必須嚴格保持上述香港口語字詞規範！\n\n`;
     
     if (targetLang === 'both') {
-        prompt += `請輸出 JSON 物件，格式：{"zh": ["香港繁體1", "香港繁體2"], "en": ["English 1", "English 2"]}\n`;
+        prompt += `請輸出 JSON 物件，格式：{"zh": ["香港口語1", "香港口語2"], "en": ["English 1", "English 2"]}\n`;
     } else if (targetLang === 'zh') {
-        prompt += `請輸出 JSON 物件，格式：{"zh": ["香港繁體1", "香港繁體2"]}\n`;
+        prompt += `請輸出 JSON 物件，格式：{"zh": ["香港口語1", "香港口語2"]}\n`;
     } else {
         prompt += `請輸出 JSON 物件，格式：{"en": ["English 1", "English 2"]}\n`;
     }
