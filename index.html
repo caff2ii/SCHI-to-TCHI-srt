@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 簡轉繁翻譯器 (Gemini 3.5 Flash Lite - 香港繁體版)</title>
+    <title>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -22,7 +22,7 @@
         h1 { margin-top: 0; font-size: 24px; }
         .form-group { margin-bottom: 20px; }
         label { display: block; margin-bottom: 8px; font-weight: bold; }
-        input[type="text"], input[type="password"], textarea, input[type="file"], input[type="number"] {
+        input[type="text"], input[type="password"], textarea, input[type="file"], input[type="number"], select {
             width: 100%;
             padding: 10px;
             border: 1px solid #ccc;
@@ -48,11 +48,20 @@
 <body>
 
 <div class="container">
-    <h1>SRT 簡轉繁 AI 翻譯器 (Gemini 3.5 Flash Lite)</h1>
+    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite)</h1>
     
     <div class="form-group">
         <label for="apiKey">Gemini API Key:</label>
         <input type="password" id="apiKey" placeholder="請輸入你的 Gemini API Key">
+    </div>
+
+    <div class="form-group">
+        <label for="targetLang">目標輸出語言:</label>
+        <select id="targetLang">
+            <option value="both">香港繁體中文 + 英文 (下載 2 個 SRT 檔案)</option>
+            <option value="zh">僅香港繁體中文</option>
+            <option value="en">僅英文</option>
+        </select>
     </div>
 
     <div class="form-group">
@@ -62,7 +71,7 @@
 
     <div class="form-group">
         <label for="referenceTranscript">參考 Teleprompter 讀稿機文本 / Transcript (選填):</label>
-        <textarea id="referenceTranscript" placeholder="請在此貼上原始 Teleprompter 稿件或參考 Transcript。AI 會優先參考此文本中的香港繁體用字、專有名詞與用語風格來翻譯 SRT..."></textarea>
+        <textarea id="referenceTranscript" placeholder="請在此貼上原始 Teleprompter 稿件或參考 Transcript。AI 會優先參考此文本中的專有名詞、品牌與用語風格來進行翻譯..."></textarea>
     </div>
 
     <div class="form-group">
@@ -102,6 +111,7 @@ function parseSRT(text) {
 
 async function processSRT() {
     const apiKey = document.getElementById('apiKey').value.trim();
+    const targetLang = document.getElementById('targetLang').value;
     const batchSize = parseInt(document.getElementById('batchSize').value, 10) || 40;
     const referenceTranscript = document.getElementById('referenceTranscript').value.trim();
     const fileInput = document.getElementById('srtFile');
@@ -134,26 +144,44 @@ async function processSRT() {
         convertBtn.disabled = true;
         
         const totalBatches = Math.ceil(items.length / batchSize);
-        let translatedItems = [];
+        let zhItems = [];
+        let enItems = [];
 
         try {
             for (let i = 0; i < totalBatches; i++) {
                 const chunk = items.slice(i * batchSize, (i + 1) * batchSize);
                 statusDiv.innerText = `正在處理第 ${i + 1} / ${totalBatches} 批字幕 (第 ${i * batchSize + 1} 至 ${Math.min((i + 1) * batchSize, items.length)} 條)...`;
                 
-                const translatedTexts = await translateBatch(apiKey, chunk.map(item => item.content), referenceTranscript);
+                const batchResult = await translateBatch(apiKey, chunk.map(item => item.content), referenceTranscript, targetLang);
                 
                 for (let j = 0; j < chunk.length; j++) {
-                    translatedItems.push({
-                        index: chunk[j].index,
-                        time: chunk[j].time,
-                        content: translatedTexts[j] || chunk[j].content
-                    });
+                    if (targetLang === 'zh' || targetLang === 'both') {
+                        zhItems.push({
+                            index: chunk[j].index,
+                            time: chunk[j].time,
+                            content: batchResult.zh[j] || chunk[j].content
+                        });
+                    }
+                    if (targetLang === 'en' || targetLang === 'both') {
+                        enItems.push({
+                            index: chunk[j].index,
+                            time: chunk[j].time,
+                            content: batchResult.en[j] || chunk[j].content
+                        });
+                    }
                 }
             }
 
-            const finalSRT = translatedItems.map(item => `${item.index}\n${item.time}\n${item.content}`).join('\n\n');
-            downloadFile(finalSRT, file.name.replace('.srt', '_香港繁體.srt'));
+            if (targetLang === 'zh' || targetLang === 'both') {
+                const finalZhSRT = zhItems.map(item => `${item.index}\n${item.time}\n${item.content}`).join('\n\n');
+                downloadFile(finalZhSRT, file.name.replace('.srt', '_香港繁體.srt'));
+            }
+
+            if (targetLang === 'en' || targetLang === 'both') {
+                const finalEnSRT = enItems.map(item => `${item.index}\n${item.time}\n${item.content}`).join('\n\n');
+                downloadFile(finalEnSRT, file.name.replace('.srt', '_English.srt'));
+            }
+
             statusDiv.innerText = '轉換完成並已開始下載！';
         } catch (error) {
             console.error(error);
@@ -166,19 +194,27 @@ async function processSRT() {
     reader.readAsText(file);
 }
 
-async function translateBatch(apiKey, textArray, refTranscript) {
-    // API endpoint 已更換為 gemini-3.5-flash-lite
+async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
 
-    let prompt = `你是一個專業字幕翻譯員。請將 JSON 陣列中的簡體中文文本翻譯/轉換為香港繁體中文（Hong Kong Traditional Chinese）。\n`;
+    let prompt = `你是一個專業雙語字幕翻譯員。請將 JSON 陣列中的字幕文本進行翻譯。\n`;
     prompt += `嚴格要求：\n`;
-    prompt += `1. 用語、詞彙與標點符號必須完全符合香港習慣。\n`;
-    prompt += `2. 必須嚴格保持輸入 JSON 陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n`;
-    prompt += `3. 僅翻譯內容，不要改變句子的原文結構，但若參考稿中有對應的專有名詞、品牌名或獨特譯法，請優先參考並統一採用。\n`;
-    prompt += `4. 直接輸出 JSON 陣列字串（例如：["文本1", "文本2"]），不要包含任何 markdown 程式碼塊標籤。\n`;
+    prompt += `1. 香港繁體中文（zh）用語與標點符號必須完全符合香港習慣。\n`;
+    prompt += `2. 英文（en）翻譯必須自然流暢，適合影片字幕長度與口語表達。\n`;
+    prompt += `3. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n`;
     
+    if (targetLang === 'both') {
+        prompt += `4. 請輸出包含 "zh" 與 "en" 兩個 key 的 JSON 物件，各自對應翻譯後的字串陣列。例如：{"zh": ["文本1", "文本2"], "en": ["Text 1", "Text 2"]}\n`;
+    } else if (targetLang === 'zh') {
+        prompt += `4. 請輸出包含 "zh" key 的 JSON 物件，對應翻譯後的字串陣列。例如：{"zh": ["文本1", "文本2"]}\n`;
+    } else {
+        prompt += `4. 請輸出包含 "en" key 的 JSON 物件，對應翻譯後的字串陣列。例如：{"en": ["Text 1", "Text 2"]}\n`;
+    }
+    
+    prompt += `5. 直接輸出 JSON 物件字串，不要包含任何 markdown 程式碼塊標籤。\n`;
+
     if (refTranscript) {
-        prompt += `\n以下是原始的 Teleprompter 讀稿機文本 / 參考 Transcript (即使內容與 SRT 講述的字句不全然相同，請根據此稿件的專有名詞、用語風格與香港繁體用字進行對照翻譯)：\n${refTranscript}\n`;
+        prompt += `\n以下是原始的 Teleprompter 讀稿機文本 / 參考 Transcript (即使內容與 SRT 講述的字句不全然相同，請根據此稿件的專有名詞、品牌名與用語風格進行對照翻譯)：\n${refTranscript}\n`;
     }
 
     prompt += `\n以下是需要翻譯的 SRT 字幕 JSON 陣列：\n${JSON.stringify(textArray)}`;
@@ -200,16 +236,29 @@ async function translateBatch(apiKey, textArray, refTranscript) {
     let resultText = data.candidates[0].content.parts[0].text;
     resultText = resultText.replace(/^```json\n?/i, '').replace(/^```\w*\n?/i, '').replace(/\n?```$/i, '').trim();
 
+    const fallbackResult = {
+        zh: textArray,
+        en: textArray
+    };
+
     try {
-        const parsedArray = JSON.parse(resultText);
-        if (Array.isArray(parsedArray) && parsedArray.length === textArray.length) {
-            return parsedArray;
+        const parsedObject = JSON.parse(resultText);
+        let resZh = textArray;
+        let resEn = textArray;
+
+        if (parsedObject.zh && Array.isArray(parsedObject.zh) && parsedObject.zh.length === textArray.length) {
+            resZh = parsedObject.zh;
         }
+        if (parsedObject.en && Array.isArray(parsedObject.en) && parsedObject.en.length === textArray.length) {
+            resEn = parsedObject.en;
+        }
+
+        return { zh: resZh, en: resEn };
     } catch (e) {
         console.warn('JSON 解析失敗，降級使用純文本處理', e);
     }
     
-    return textArray;
+    return fallbackResult;
 }
 
 function downloadFile(content, filename) {
