@@ -107,7 +107,7 @@
 <body>
 
 <div class="container">
-  <h1>SRT 字幕語義分割處理工具 v3.0</h1>
+  <h1>SRT 字幕語義分割處理工具</h1>
   
   <div class="field">
     <label for="apiKey">Gemini API Key:</label>
@@ -279,7 +279,8 @@
   "en": [ {"index": "1", "timecode": "00:00:00,000 --> 00:00:02,000", "text": "English text"} ]
 }`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // Endpoint 使用 gemini-3.5-flash-lite
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
