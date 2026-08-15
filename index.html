@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT 簡轉繁翻譯器 (Gemini 3.5 Flash Lite - 香港繁體版)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f7;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        h1 { margin-top: 0; font-size: 24px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="text"], input[type="password"], textarea, input[type="file"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        textarea { height: 120px; resize: vertical; }
+        button {
+            background-color: #0071e3;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status { margin-top: 15px; font-weight: bold; white-space: pre-line; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>SRT 簡轉繁 AI 翻譯器 (Gemini 3.5 Flash Lite)</h1>
+    
+    <div class="form-group">
+        <label for="apiKey">Gemini API Key:</label>
+        <input type="password" id="apiKey" placeholder="請輸入你的 Gemini API Key">
+    </div>
+
+    <div class="form-group">
+        <label for="batchSize">每批處理字幕條數 (建議 30-50 條):</label>
+        <input type="number" id="batchSize" value="40" min="10" max="100">
+    </div>
+
+    <div class="form-group">
+        <label for="referenceTranscript">參考 Teleprompter 讀稿機文本 / Transcript (選填):</label>
+        <textarea id="referenceTranscript" placeholder="請在此貼上原始 Teleprompter 稿件或參考 Transcript。AI 會優先參考此文本中的香港繁體用字、專有名詞與用語風格來翻譯 SRT..."></textarea>
+    </div>
+
+    <div class="form-group">
+        <label for="srtFile">選擇 SRT 檔案:</label>
+        <input type="file" id="srtFile" accept=".srt">
+    </div>
+
+    <button id="convertBtn" onclick="processSRT()">開始轉換並下載</button>
+
+    <div id="status"></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const savedApiKey = localStorage.getItem('gemini_api_key');
+    if (savedApiKey) {
+        document.getElementById('apiKey').value = savedApiKey;
+    }
+});
+
+function parseSRT(text) {
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const blocks = normalizedText.trim().split(/\n\n+/);
+    const parsed = [];
+
+    for (const block of blocks) {
+        const lines = block.split('\n');
+        if (lines.length >= 3) {
+            const index = lines[0].trim();
+            const time = lines[1].trim();
+            const content = lines.slice(2).join('\n').trim();
+            parsed.push({ index, time, content });
+        }
+    }
+    return parsed;
+}
+
+async function processSRT() {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    const batchSize = parseInt(document.getElementById('batchSize').value, 10) || 40;
+    const referenceTranscript = document.getElementById('referenceTranscript').value.trim();
+    const fileInput = document.getElementById('srtFile');
+    const statusDiv = document.getElementById('status');
+    const convertBtn = document.getElementById('convertBtn');
+
+    if (!apiKey) {
+        alert('請輸入 Gemini API Key！');
+        return;
+    }
+    if (fileInput.files.length === 0) {
+        alert('請選擇一個 SRT 檔案！');
+        return;
+    }
+
+    localStorage.setItem('gemini_api_key', apiKey);
+
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async function(e) {
+        const srtContent = e.target.result;
+        const items = parseSRT(srtContent);
+        
+        if (items.length === 0) {
+            alert('無法解析 SRT 檔案內容！');
+            return;
+        }
+
+        convertBtn.disabled = true;
+        
+        const totalBatches = Math.ceil(items.length / batchSize);
+        let translatedItems = [];
+
+        try {
+            for (let i = 0; i < totalBatches; i++) {
+                const chunk = items.slice(i * batchSize, (i + 1) * batchSize);
+                statusDiv.innerText = `正在處理第 ${i + 1} / ${totalBatches} 批字幕 (第 ${i * batchSize + 1} 至 ${Math.min((i + 1) * batchSize, items.length)} 條)...`;
+                
+                const translatedTexts = await translateBatch(apiKey, chunk.map(item => item.content), referenceTranscript);
+                
+                for (let j = 0; j < chunk.length; j++) {
+                    translatedItems.push({
+                        index: chunk[j].index,
+                        time: chunk[j].time,
+                        content: translatedTexts[j] || chunk[j].content
+                    });
+                }
+            }
+
+            const finalSRT = translatedItems.map(item => `${item.index}\n${item.time}\n${item.content}`).join('\n\n');
+            downloadFile(finalSRT, file.name.replace('.srt', '_香港繁體.srt'));
+            statusDiv.innerText = '轉換完成並已開始下載！';
+        } catch (error) {
+            console.error(error);
+            statusDiv.innerText = '發生錯誤: ' + error.message;
+        } finally {
+            convertBtn.disabled = false;
+        }
+    };
+
+    reader.readAsText(file);
+}
+
+async function translateBatch(apiKey, textArray, refTranscript) {
+    // API endpoint 已更換為 gemini-3.5-flash-lite
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
+
+    let prompt = `你是一個專業字幕翻譯員。請將 JSON 陣列中的簡體中文文本翻譯/轉換為香港繁體中文（Hong Kong Traditional Chinese）。\n`;
+    prompt += `嚴格要求：\n`;
+    prompt += `1. 用語、詞彙與標點符號必須完全符合香港習慣。\n`;
+    prompt += `2. 必須嚴格保持輸入 JSON 陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n`;
+    prompt += `3. 僅翻譯內容，不要改變句子的原文結構，但若參考稿中有對應的專有名詞、品牌名或獨特譯法，請優先參考並統一採用。\n`;
+    prompt += `4. 直接輸出 JSON 陣列字串（例如：["文本1", "文本2"]），不要包含任何 markdown 程式碼塊標籤。\n`;
+    
+    if (refTranscript) {
+        prompt += `\n以下是原始的 Teleprompter 讀稿機文本 / 參考 Transcript (即使內容與 SRT 講述的字句不全然相同，請根據此稿件的專有名詞、用語風格與香港繁體用字進行對照翻譯)：\n${refTranscript}\n`;
+    }
+
+    prompt += `\n以下是需要翻譯的 SRT 字幕 JSON 陣列：\n${JSON.stringify(textArray)}`;
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+        })
+    });
+
+    if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error?.message || 'API 請求失敗');
+    }
+
+    const data = await response.json();
+    let resultText = data.candidates[0].content.parts[0].text;
+    resultText = resultText.replace(/^```json\n?/i, '').replace(/^```\w*\n?/i, '').replace(/\n?```$/i, '').trim();
+
+    try {
+        const parsedArray = JSON.parse(resultText);
+        if (Array.isArray(parsedArray) && parsedArray.length === textArray.length) {
+            return parsedArray;
+        }
+    } catch (e) {
+        console.warn('JSON 解析失敗，降級使用純文本處理', e);
+    }
+    
+    return textArray;
+}
+
+function downloadFile(content, filename) {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+</script>
+
+</body>
+</html>
