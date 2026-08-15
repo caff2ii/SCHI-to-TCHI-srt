@@ -3,46 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite)</title>
+    <title>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite - 暗黑模式)</title>
     <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --text-secondary: #a0a0a0;
+            --border-color: #333333;
+            --input-bg: #2a2a2a;
+            --primary-color: #0a84ff;
+            --primary-hover: #0066cc;
+            --button-disabled: #444444;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             max-width: 800px;
             margin: 20px auto;
             padding: 20px;
-            background-color: #f5f5f7;
-            color: #333;
+            background-color: var(--bg-color);
+            color: var(--text-color);
         }
+
         .container {
-            background: white;
+            background: var(--card-bg);
             padding: 30px;
             border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-color);
         }
-        h1 { margin-top: 0; font-size: 24px; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-weight: bold; }
-        input[type="text"], input[type="password"], textarea, input[type="file"], input[type="number"], select {
+
+        h1 {
+            margin-top: 0;
+            font-size: 24px;
+            color: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        input[type="text"],
+        input[type="password"],
+        textarea,
+        input[type="file"],
+        input[type="number"],
+        select {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
+            padding: 12px;
+            border: 1px solid var(--border-color);
             border-radius: 6px;
             box-sizing: border-box;
             font-size: 14px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            transition: border-color 0.2s;
         }
-        textarea { height: 120px; resize: vertical; }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus,
+        textarea:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        textarea {
+            height: 120px;
+            resize: vertical;
+        }
+
         button {
-            background-color: #0071e3;
+            background-color: var(--primary-color);
             color: white;
             border: none;
-            padding: 12px 20px;
+            padding: 14px 20px;
             border-radius: 6px;
             font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
             width: 100%;
+            transition: background-color 0.2s;
         }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #status { margin-top: 15px; font-weight: bold; white-space: pre-line; }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:disabled {
+            background-color: var(--button-disabled);
+            color: #888888;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 15px;
+            font-weight: bold;
+            white-space: pre-line;
+            color: #34c759;
+        }
+
+        .error-status {
+            color: #ff453a !important;
+        }
     </style>
 </head>
 <body>
@@ -118,6 +192,8 @@ async function processSRT() {
     const statusDiv = document.getElementById('status');
     const convertBtn = document.getElementById('convertBtn');
 
+    statusDiv.classList.remove('error-status');
+
     if (!apiKey) {
         alert('請輸入 Gemini API Key！');
         return;
@@ -185,6 +261,7 @@ async function processSRT() {
             statusDiv.innerText = '轉換完成並已開始下載！';
         } catch (error) {
             console.error(error);
+            statusDiv.classList.add('error-status');
             statusDiv.innerText = '發生錯誤: ' + error.message;
         } finally {
             convertBtn.disabled = false;
