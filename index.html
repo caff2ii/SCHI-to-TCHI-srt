@@ -145,7 +145,7 @@
 <body>
 
 <div class="container">
-    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v6.0</h1>
+    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v7.0</h1>
     
     <div class="form-group">
         <label for="apiKey">Gemini API Key:</label>
@@ -191,6 +191,8 @@
 let globalZhSRT = '';
 let globalEnSRT = '';
 let globalBaseFileName = 'subtitles';
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 document.addEventListener('DOMContentLoaded', () => {
     const savedApiKey = localStorage.getItem('gemini_api_key');
@@ -262,10 +264,27 @@ async function processSRT() {
         try {
             for (let i = 0; i < totalBatches; i++) {
                 const chunk = items.slice(i * batchSize, (i + 1) * batchSize);
-                statusDiv.innerText = `正在處理第 ${i + 1} / ${totalBatches} 批字幕 (第 ${i * batchSize + 1} 至 ${Math.min((i + 1) * batchSize, items.length)} 條)...`;
                 
-                const batchResult = await translateBatch(apiKey, chunk.map(item => item.content), referenceTranscript, targetLang);
+                // 自動 Retry 機制 (最長 Retry 5 次)
+                let batchResult = null;
+                let maxRetries = 5;
+                let retryDelay = 6000; // 遇到 429 預設等 6 秒
+
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        statusDiv.innerText = `正在處理第 ${i + 1} / ${totalBatches} 批字幕 (第 ${i * batchSize + 1} 至 ${Math.min((i + 1) * batchSize, items.length)} 條)...`;
+                        batchResult = await translateBatch(apiKey, chunk.map(item => item.content), referenceTranscript, targetLang);
+                        break; // 成功即跳出 retry loop
+                    } catch (err) {
+                        if (attempt === maxRetries) throw err; // 試晒次數就扔出 error
+                        
+                        statusDiv.innerText = `⚠️ 觸及 API 限額/網路微爆，正等待 ${retryDelay / 1000} 秒後自動重試 (第 ${attempt}/${maxRetries} 次)...`;
+                        await sleep(retryDelay);
+                        retryDelay += 4000; // 每次重試再加長 4 秒
+                    }
+                }
                 
+                // 成功取得結果，將結果快取儲存，繼續下一 Batch
                 for (let j = 0; j < chunk.length; j++) {
                     if (targetLang === 'zh' || targetLang === 'both') {
                         zhItems.push({
