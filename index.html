@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite - 暗黑模式)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- 引入 OpenCC 繁簡轉換庫 -->
+    <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js"></script>
     <style>
         :root {
             --bg-color: #121212;
@@ -162,13 +164,13 @@
     </div>
 
     <div class="form-group">
-        <label for="batchSize">每批處理字幕條數 (建議 30-50 條):</label>
-        <input type="number" id="batchSize" value="40" min="10" max="100">
+        <label for="batchSize">每批處理字幕條數 (建議 20-30 條):</label>
+        <input type="number" id="batchSize" value="25" min="5" max="50">
     </div>
 
     <div class="form-group">
         <label for="referenceTranscript">參考 Teleprompter 讀稿機文本 / Transcript (選填):</label>
-        <textarea id="referenceTranscript" placeholder="請在此貼上原始 Teleprompter 稿件或參考 Transcript。AI 會優先參考此文本中的專有名詞、品牌與用語風格來進行翻譯..."></textarea>
+        <textarea id="referenceTranscript" placeholder="請在此貼上原始 Teleprompter 稿件或參考 Transcript..."></textarea>
     </div>
 
     <div class="form-group">
@@ -191,6 +193,9 @@
 let globalZhSRT = '';
 let globalEnSRT = '';
 let globalBaseFileName = 'subtitles';
+
+// 初始化 OpenCC 簡轉繁 (中國大陸簡體 -> 香港繁體)
+const converter = OpenCC.Converter({ from: 'cn', to: 'hk' });
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -218,10 +223,19 @@ function parseSRT(text) {
     return parsed;
 }
 
+// 後處理修正（精準修飾常用廣東話詞彙）
+function postProcessZhText(text) {
+    return text
+        .replace(/咧/g, '呢')
+        .replace(/呢便/g, '呢面')
+        .replace(/嗰便/g, '嗰面')
+        .replace(/噉樣樣/g, '咁樣');
+}
+
 async function processSRT() {
     const apiKey = document.getElementById('apiKey').value.trim();
     const targetLang = document.getElementById('targetLang').value;
-    const batchSize = parseInt(document.getElementById('batchSize').value, 10) || 40;
+    const batchSize = parseInt(document.getElementById('batchSize').value, 10) || 25;
     const referenceTranscript = document.getElementById('referenceTranscript').value.trim();
     const fileInput = document.getElementById('srtFile');
     const statusDiv = document.getElementById('status');
@@ -265,30 +279,36 @@ async function processSRT() {
             for (let i = 0; i < totalBatches; i++) {
                 const chunk = items.slice(i * batchSize, (i + 1) * batchSize);
                 
+                // 第一層過濾：用 JS OpenCC 先將所有文字轉為繁體中文
+                const preConvertedContents = chunk.map(item => converter(item.content));
+
                 let batchResult = null;
                 let maxRetries = 5;
-                let retryDelay = 6000;
+                let retryDelay = 5000;
 
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         statusDiv.innerText = `正在處理第 ${i + 1} / ${totalBatches} 批字幕 (第 ${i * batchSize + 1} 至 ${Math.min((i + 1) * batchSize, items.length)} 條)...`;
-                        batchResult = await translateBatch(apiKey, chunk.map(item => item.content), referenceTranscript, targetLang);
+                        // 第二層：將已轉為繁體嘅內容交比 AI 做語義潤飾同去贅字
+                        batchResult = await translateBatch(apiKey, preConvertedContents, referenceTranscript, targetLang);
                         break;
                     } catch (err) {
                         if (attempt === maxRetries) throw err;
                         
-                        statusDiv.innerText = `⚠️ 觸及 API 限額/網路微爆，正等待 ${retryDelay / 1000} 秒後自動重試 (第 ${attempt}/${maxRetries} 次)...`;
+                        statusDiv.innerText = `⚠️ 觸及 API 限額，正等待 ${retryDelay / 1000} 秒後自動重試 (第 ${attempt}/${maxRetries} 次)...`;
                         await sleep(retryDelay);
-                        retryDelay += 4000;
+                        retryDelay += 3000;
                     }
                 }
                 
                 for (let j = 0; j < chunk.length; j++) {
                     if (targetLang === 'zh' || targetLang === 'both') {
+                        // 第三層：後處理正則替換
+                        let finalZhContent = postProcessZhText(batchResult.zh[j] || preConvertedContents[j]);
                         zhItems.push({
                             index: chunk[j].index,
                             time: chunk[j].time,
-                            content: batchResult.zh[j] || chunk[j].content
+                            content: finalZhContent
                         });
                     }
                     if (targetLang === 'en' || targetLang === 'both') {
@@ -325,34 +345,26 @@ async function processSRT() {
 async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
 
-    let prompt = `你是一個專業的香港廣東話影片字幕資深編輯（Sub-editor）。\n`;
-    prompt += `你的任務是將語音識別（ASR）的簡體/直譯稿件，重構成自然、精煉、符合香港人閱讀習慣的「正式影片繁體字幕」。\n\n`;
+    let prompt = `你是一個極度嚴謹的香港廣東話字幕資深編輯（Sub-editor）。\n`;
+    prompt += `輸入的文本已經過繁體轉換，你的主要任務是「刪除贅字、修飾廣東話語法、並轉為自然精練的香港字幕」。\n\n`;
 
-    prompt += `【核心規則 1：語法檢測與語境翻譯（重組句式）】\n`;
-    prompt += `- 必須主動檢查成句語法，將直譯/硬翻譯腔改為香港人真說話、睇字幕的語法。\n`;
-    prompt += `- 範例 A：原句「其實就見到你間屋係好靚嘅」 -> 修正為「其實見到你間屋好靚」（刪除冗餘的「就」、「係」）。\n`;
-    prompt += `- 範例 B：原句「最重要感覺係生活態度咯」 -> 修正為「最重要感覺係生活態度」（刪除句尾贅詞「咯」）。\n`;
-    prompt += `- 範例 C：原句「寄人籬下啊噉樣樣」 -> 修正為「寄人籬下咁樣」（刪除「啊」、修正疊字「樣樣」）。\n\n`;
+    prompt += `【核心規則 1：刪除贅字、口吃、疊字與無意義動詞】\n`;
+    prompt += `- 徹底刪除所有口吃與感嘆詞（如：「呃」、「啊」、「誒」、「嗯」）。\n`;
+    prompt += `- 刪除重複疊字與尾音（如「咁樣樣」修剪為「咁樣」）。\n`;
+    prompt += `- 刪除句中無意義的冗餘動詞/連結詞（例：「工作環境都係喺西區嘅」 -> 修飾為「工作環境都喺西區」；刪除多餘的「係」與「嘅」）。\n\n`;
 
-    prompt += `【核心規則 2：過濾贅詞、口吃與疊字（De-filler）】\n`;
-    prompt += `- 必須刪除所有無意義感嘆詞（「呃」、「啊」、「誒」、「嗯」等）。\n`;
-    prompt += `- 必須刪除口語中的無意義重複疊字與尾音（如「噉樣樣」必須修剪為「咁樣」）。\n\n`;
-
-    prompt += `【核心規則 3：地道香港廣東話常用字】\n`;
-    prompt += `- 指示代詞「咁」：指示代詞（如「咁樣」、「咁呢」、「咁樣做」）必須統一使用「咁」，不要用「噉」。\n`;
-    prompt += `- 動詞「睇」：涉及視覺（看、看見、看到）必須用「睇」（如「睇到」、「睇見」），不要保留「見」或「看」。\n`;
-    prompt += `- 斷定詞「係」：必須使用「係」（禁止「是」/「系」）。\n`;
-    prompt += `- 給予「俾」：必須使用「俾」（禁止「畀」/「給」）。\n`;
-    prompt += `- 完成「咗」：必須使用「咗」（如：做咗，禁止「了」）。\n`;
-    prompt += `- 那「嗰」：必須使用「嗰」（禁止「那」）。\n`;
-    prompt += `- 這「呢」：必須使用「呢」（禁止「這」）。\n`;
-    prompt += `- 無「冇」：必須使用「冇」（禁止「沒有」）。\n`;
-    prompt += `- 不「唔」：必須使用「唔」（禁止「不」）。\n`;
-    prompt += `- 絕對禁止出現任何簡體字或內地詞彙。\n\n`;
+    prompt += `【核心規則 2：香港地道廣東話用語規範】\n`;
+    prompt += `- 方向詞：「呢便 / 嗰便」必須修飾為「呢面 / 嗰面」。\n`;
+    prompt += `- 語氣詞：「咧」必須修飾為「呢」。\n`;
+    prompt += `- 指示代詞「咁」：指示代詞（如「咁樣」、「咁呢」）必須統一使用「咁」，嚴禁使用「噉」。\n`;
+    prompt += `- 視覺動詞「睇」：看/看見必須用「睇」（如「睇到」），嚴禁保留「看」。\n`;
+    prompt += `- 位置介詞「喺」：表示位置（在）必須用「喺」，嚴禁使用「系」。\n`;
+    prompt += `- 斷定詞「係」：表示「是」時必須使用「係」。\n`;
+    prompt += `- 完成「咗」 / 那「嗰」 / 這「呢」 / 無「冇」 / 不「唔」。\n\n`;
 
     prompt += `【其他規則】\n`;
-    prompt += `1. 英文（en）翻譯必須自然流暢，同樣需要過濾贅詞，符合影片字幕閱讀長度。\n`;
-    prompt += `2. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n\n`;
+    prompt += `1. 英文（en）翻譯必須自然流暢，符合影片字幕閱讀長度。\n`;
+    prompt += `2. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致（1 對 1 對應）。\n\n`;
     
     if (targetLang === 'both') {
         prompt += `請輸出 JSON 物件，格式：{"zh": ["精簡廣東話字幕1", "精簡廣東話字幕2"], "en": ["English 1", "English 2"]}\n`;
