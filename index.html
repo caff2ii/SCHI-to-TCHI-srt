@@ -230,7 +230,8 @@ function postProcessZhText(text) {
         .replace(/呢便/g, '呢面')
         .replace(/嗰便/g, '嗰面')
         .replace(/噉樣樣/g, '咁樣')
-        .replace(/咯/g, ''); // 直接刪除「咯」
+        .replace(/咯/g, '') // 直接刪除「咯」
+        .replace(/畀/g, '俾');
 }
 
 async function processSRT() {
