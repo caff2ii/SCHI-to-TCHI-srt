@@ -147,7 +147,7 @@
 <body>
 
 <div class="container">
-    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v8.0</h1>
+    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v9.0</h1>
     
     <div class="form-group">
         <label for="apiKey">Gemini API Key:</label>
@@ -229,7 +229,8 @@ function postProcessZhText(text) {
         .replace(/咧/g, '呢')
         .replace(/呢便/g, '呢面')
         .replace(/嗰便/g, '嗰面')
-        .replace(/噉樣樣/g, '咁樣');
+        .replace(/噉樣樣/g, '咁樣')
+        .replace(/咯/g, ''); // 直接刪除「咯」
 }
 
 async function processSRT() {
@@ -355,7 +356,7 @@ async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
 
     prompt += `【核心規則 2：香港地道廣東話用語規範】\n`;
     prompt += `- 方向詞：「呢便 / 嗰便」必須修飾為「呢面 / 嗰面」。\n`;
-    prompt += `- 語氣詞：「咧」必須修飾為「呢」。\n`;
+    prompt += `- 語氣詞：「咧」必須修飾為「呢」；嚴禁使用「咯」，必須根據語境修飾為「啦」、「囉」或刪除。\n`;
     prompt += `- 指示代詞「咁」：指示代詞（如「咁樣」、「咁呢」）必須統一使用「咁」，嚴禁使用「噉」。\n`;
     prompt += `- 視覺動詞「睇」：看/看見必須用「睇」（如「睇到」），嚴禁保留「看」。\n`;
     prompt += `- 位置介詞「喺」：表示位置（在）必須用「喺」，嚴禁使用「系」。\n`;
