@@ -145,7 +145,7 @@
 <body>
 
 <div class="container">
-    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v5.0</h1>
+    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v6.0</h1>
     
     <div class="form-group">
         <label for="apiKey">Gemini API Key:</label>
@@ -308,27 +308,34 @@ async function processSRT() {
 async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
 
-    let prompt = `你是一個專業雙語字幕翻譯員。\n`;
-    prompt += `【香港廣東話口語文字規範】\n`;
-    prompt += `所有中文翻譯（zh）必須嚴格使用地道香港廣東話口語，並恪守以下字詞規範：\n`;
-    prompt += `- 必須使用「係」，絕對禁止使用「系」或「是」。\n`;
-    prompt += `- 必須使用「俾」，絕對禁止使用「畀」或「給」。\n`;
-    prompt += `- 必須使用「咗」（如：做咗、睇咗），絕對禁止使用「了」。\n`;
-    prompt += `- 必須使用「嗰」（如：嗰度、嗰個），絕對禁止使用「那」。\n`;
-    prompt += `- 必須使用「呢」（如：呢度、呢個），絕對禁止使用「這」。\n`;
-    prompt += `- 必須使用「冇」，絕對禁止使用「冇」的替代字或「沒有」。\n`;
-    prompt += `- 必須使用「唔」，絕對禁止使用「不」。\n`;
-    prompt += `- 必須使用「噉」（如：噉樣），絕對禁止使用「咁樣」或「這樣」。\n`;
-    prompt += `- 絕對禁止出現任何簡體字或大陸用語！\n\n`;
+    let prompt = `你是一個專業的影片字幕編輯與翻譯員。\n`;
+    prompt += `你的任務是將語音識別（ASR）的字幕清理並整理成「正式影片用」的繁體廣東話字幕。\n\n`;
+    
+    prompt += `【核心規則 1：過濾贅詞與口吃（De-filler）】\n`;
+    prompt += `- 必須刪除所有無意義的思考詞、語氣詞、口吃與廢字（例如：「呃」、「啊」、「嗯」、「即係呢」、「咁樣呢」開頭的無意義贅詞）。\n`;
+    prompt += `- 範例：原句「呃首先多謝Martin你呃抽時間做採訪啦」 -> 修正為「首先多謝Martin你抽時間做訪問」。\n`;
+    prompt += `- 保持字幕簡潔流暢，適合觀眾快速閱讀，但切勿改變原意。\n\n`;
+
+    prompt += `【核心規則 2：專業香港廣東話字幕規範】\n`;
+    prompt += `- 所有中文（zh）必須符合香港人日常看 YouTube/電視字幕的習慣，地道流暢，嚴禁內地簡體翻譯腔或機械式直譯。\n`;
+    prompt += `- 必須使用「係」（禁止「是」/「系」）。\n`;
+    prompt += `- 必須使用「俾」（禁止「畀」/「給」）。\n`;
+    prompt += `- 必須使用「咗」（如：做咗，禁止「了」）。\n`;
+    prompt += `- 必須使用「嗰」（禁止「那」）。\n`;
+    prompt += `- 必須使用「呢」（禁止「這」）。\n`;
+    prompt += `- 必須使用「冇」（禁止「沒有」）。\n`;
+    prompt += `- 必須使用「唔」（禁止「不」）。\n`;
+    prompt += `- 必須使用「噉」（如：噉樣，禁止「咁樣」/「這樣」）。\n`;
+    prompt += `- 絕對禁止出現任何簡體字或內地用語（例如將「採訪」順手修飾為更自然的香港口語「訪問」）。\n\n`;
+
     prompt += `【其他規則】\n`;
-    prompt += `1. 英文（en）翻譯必須自然流暢，適合影片字幕長度與口語表達。\n`;
-    prompt += `2. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n`;
-    prompt += `3. 即使是最後一批字幕，也必須嚴格保持上述香港口語字詞規範！\n\n`;
+    prompt += `1. 英文（en）翻譯必須自然流暢，同樣需要去除口吃與廢詞，適合字幕長度。\n`;
+    prompt += `2. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n\n`;
     
     if (targetLang === 'both') {
-        prompt += `請輸出 JSON 物件，格式：{"zh": ["香港口語1", "香港口語2"], "en": ["English 1", "English 2"]}\n`;
+        prompt += `請輸出 JSON 物件，格式：{"zh": ["精簡廣東話字幕1", "精簡廣東話字幕2"], "en": ["English 1", "English 2"]}\n`;
     } else if (targetLang === 'zh') {
-        prompt += `請輸出 JSON 物件，格式：{"zh": ["香港口語1", "香港口語2"]}\n`;
+        prompt += `請輸出 JSON 物件，格式：{"zh": ["精簡廣東話字幕1", "精簡廣東話字幕2"]}\n`;
     } else {
         prompt += `請輸出 JSON 物件，格式：{"en": ["English 1", "English 2"]}\n`;
     }
@@ -337,7 +344,7 @@ async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
         prompt += `\n參考 Teleprompter 讀稿機文本 / Transcript：\n${refTranscript}\n`;
     }
 
-    prompt += `\n需要翻譯的字幕陣列 JSON：\n${JSON.stringify(textArray)}`;
+    prompt += `\n需要處理的字幕陣列 JSON：\n${JSON.stringify(textArray)}`;
 
     const response = await fetch(url, {
         method: 'POST',
@@ -381,7 +388,7 @@ async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
 function triggerDownload(content, filename) {
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = URL.createObjectURL(link);
     link.download = filename;
     document.body.appendChild(link);
     link.click();
