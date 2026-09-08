@@ -145,7 +145,7 @@
 <body>
 
 <div class="container">
-    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v7.0</h1>
+    <h1>SRT 雙語 AI 翻譯器 (Gemini 3.5 Flash Lite) v8.0</h1>
     
     <div class="form-group">
         <label for="apiKey">Gemini API Key:</label>
@@ -265,26 +265,24 @@ async function processSRT() {
             for (let i = 0; i < totalBatches; i++) {
                 const chunk = items.slice(i * batchSize, (i + 1) * batchSize);
                 
-                // 自動 Retry 機制 (最長 Retry 5 次)
                 let batchResult = null;
                 let maxRetries = 5;
-                let retryDelay = 6000; // 遇到 429 預設等 6 秒
+                let retryDelay = 6000;
 
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
                         statusDiv.innerText = `正在處理第 ${i + 1} / ${totalBatches} 批字幕 (第 ${i * batchSize + 1} 至 ${Math.min((i + 1) * batchSize, items.length)} 條)...`;
                         batchResult = await translateBatch(apiKey, chunk.map(item => item.content), referenceTranscript, targetLang);
-                        break; // 成功即跳出 retry loop
+                        break;
                     } catch (err) {
-                        if (attempt === maxRetries) throw err; // 試晒次數就扔出 error
+                        if (attempt === maxRetries) throw err;
                         
                         statusDiv.innerText = `⚠️ 觸及 API 限額/網路微爆，正等待 ${retryDelay / 1000} 秒後自動重試 (第 ${attempt}/${maxRetries} 次)...`;
                         await sleep(retryDelay);
-                        retryDelay += 4000; // 每次重試再加長 4 秒
+                        retryDelay += 4000;
                     }
                 }
                 
-                // 成功取得結果，將結果快取儲存，繼續下一 Batch
                 for (let j = 0; j < chunk.length; j++) {
                     if (targetLang === 'zh' || targetLang === 'both') {
                         zhItems.push({
@@ -327,28 +325,33 @@ async function processSRT() {
 async function translateBatch(apiKey, textArray, refTranscript, targetLang) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`;
 
-    let prompt = `你是一個專業的影片字幕編輯與翻譯員。\n`;
-    prompt += `你的任務是將語音識別（ASR）的字幕清理並整理成「正式影片用」的繁體廣東話字幕。\n\n`;
-    
-    prompt += `【核心規則 1：過濾贅詞與口吃（De-filler）】\n`;
-    prompt += `- 必須刪除所有無意義的思考詞、語氣詞、口吃與廢字（例如：「呃」、「啊」、「嗯」、「即係呢」、「咁樣呢」開頭的無意義贅詞）。\n`;
-    prompt += `- 範例：原句「呃首先多謝Martin你呃抽時間做採訪啦」 -> 修正為「首先多謝Martin你抽時間做訪問」。\n`;
-    prompt += `- 保持字幕簡潔流暢，適合觀眾快速閱讀，但切勿改變原意。\n\n`;
+    let prompt = `你是一個專業的香港廣東話影片字幕資深編輯（Sub-editor）。\n`;
+    prompt += `你的任務是將語音識別（ASR）的簡體/直譯稿件，重構成自然、精煉、符合香港人閱讀習慣的「正式影片繁體字幕」。\n\n`;
 
-    prompt += `【核心規則 2：專業香港廣東話字幕規範】\n`;
-    prompt += `- 所有中文（zh）必須符合香港人日常看 YouTube/電視字幕的習慣，地道流暢，嚴禁內地簡體翻譯腔或機械式直譯。\n`;
-    prompt += `- 必須使用「係」（禁止「是」/「系」）。\n`;
-    prompt += `- 必須使用「俾」（禁止「畀」/「給」）。\n`;
-    prompt += `- 必須使用「咗」（如：做咗，禁止「了」）。\n`;
-    prompt += `- 必須使用「嗰」（禁止「那」）。\n`;
-    prompt += `- 必須使用「呢」（禁止「這」）。\n`;
-    prompt += `- 必須使用「冇」（禁止「沒有」）。\n`;
-    prompt += `- 必須使用「唔」（禁止「不」）。\n`;
-    prompt += `- 必須使用「噉」（如：噉樣，禁止「咁樣」/「這樣」）。\n`;
-    prompt += `- 絕對禁止出現任何簡體字或內地用語（例如將「採訪」順手修飾為更自然的香港口語「訪問」）。\n\n`;
+    prompt += `【核心規則 1：語法檢測與語境翻譯（重組句式）】\n`;
+    prompt += `- 必須主動檢查成句語法，將直譯/硬翻譯腔改為香港人真說話、睇字幕的語法。\n`;
+    prompt += `- 範例 A：原句「其實就見到你間屋係好靚嘅」 -> 修正為「其實見到你間屋好靚」（刪除冗餘的「就」、「係」）。\n`;
+    prompt += `- 範例 B：原句「最重要感覺係生活態度咯」 -> 修正為「最重要感覺係生活態度」（刪除句尾贅詞「咯」）。\n`;
+    prompt += `- 範例 C：原句「寄人籬下啊噉樣樣」 -> 修正為「寄人籬下咁樣」（刪除「啊」、修正疊字「樣樣」）。\n\n`;
+
+    prompt += `【核心規則 2：過濾贅詞、口吃與疊字（De-filler）】\n`;
+    prompt += `- 必須刪除所有無意義感嘆詞（「呃」、「啊」、「誒」、「嗯」等）。\n`;
+    prompt += `- 必須刪除口語中的無意義重複疊字與尾音（如「噉樣樣」必須修剪為「咁樣」）。\n\n`;
+
+    prompt += `【核心規則 3：地道香港廣東話常用字】\n`;
+    prompt += `- 指示代詞「咁」：指示代詞（如「咁樣」、「咁呢」、「咁樣做」）必須統一使用「咁」，不要用「噉」。\n`;
+    prompt += `- 動詞「睇」：涉及視覺（看、看見、看到）必須用「睇」（如「睇到」、「睇見」），不要保留「見」或「看」。\n`;
+    prompt += `- 斷定詞「係」：必須使用「係」（禁止「是」/「系」）。\n`;
+    prompt += `- 給予「俾」：必須使用「俾」（禁止「畀」/「給」）。\n`;
+    prompt += `- 完成「咗」：必須使用「咗」（如：做咗，禁止「了」）。\n`;
+    prompt += `- 那「嗰」：必須使用「嗰」（禁止「那」）。\n`;
+    prompt += `- 這「呢」：必須使用「呢」（禁止「這」）。\n`;
+    prompt += `- 無「冇」：必須使用「冇」（禁止「沒有」）。\n`;
+    prompt += `- 不「唔」：必須使用「唔」（禁止「不」）。\n`;
+    prompt += `- 絕對禁止出現任何簡體字或內地詞彙。\n\n`;
 
     prompt += `【其他規則】\n`;
-    prompt += `1. 英文（en）翻譯必須自然流暢，同樣需要去除口吃與廢詞，適合字幕長度。\n`;
+    prompt += `1. 英文（en）翻譯必須自然流暢，同樣需要過濾贅詞，符合影片字幕閱讀長度。\n`;
     prompt += `2. 必須嚴格保持輸入與輸出陣列的元素數量與順序完全一致，絕對不可增減陣列長度。\n\n`;
     
     if (targetLang === 'both') {
